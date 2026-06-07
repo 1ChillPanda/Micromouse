@@ -5,6 +5,7 @@
 #include <string.h>
 
 #define MAZE_SIZE 16
+#define NUM_DIRECTIONS
 
 typedef struct xy_coordinates coor; 
 
@@ -23,6 +24,7 @@ struct where_walls {
     bool west;
     int value;
     int value_back;
+    int dir;
 };
 
 typedef struct queue_node Qnode;
@@ -37,6 +39,12 @@ struct Queue_system {
     Qnode* start;
     Qnode* end;
 };
+
+//Prints message out
+void log_message(char* text) {
+    fprintf(stderr, "%s\n", text);
+    fflush(stderr);
+}
 
 Queue* createQueue(){
     Queue* Q = malloc(sizeof(Queue));
@@ -106,10 +114,136 @@ void push(Stack* S, int x, int y){
 
 //FINISH STACK
 
-//Prints message out
-void log_message(char* text) {
-    fprintf(stderr, "%s\n", text);
-    fflush(stderr);
+//HEAP IMPLEMENTATION
+
+typedef struct Heap_Node Hnode;
+struct Heap_Node{
+    int x;
+    int y;
+    int cost;
+    int dir;
+    int speed;
+};
+
+typedef struct Heap_system Heap;
+struct Heap_system{
+    Hnode *data[MAZE_SIZE * MAZE_SIZE + 1];
+    int size;
+};
+
+Heap *CreateHeap(){
+    Heap *H = malloc(sizeof(Heap));
+    H->size = 0;
+    return H;
+}
+
+bool Heap_empty(Heap *H){
+    return H->size <= 0;
+}
+
+void swap(Heap *H, int a, int b){
+    Hnode *temp = H->data[a];
+    H->data[a] = H->data[b];
+    H->data[b] = temp;
+}
+
+void move_up(Heap *H, int index){
+    if(index > H->size){
+        log_message("Index error at move_up");
+        return;
+    }
+
+    while(index > 1){
+        if(H->data[index]->cost < H->data[index/2]->cost){
+            swap(H, index, index/2);
+            index = index/2;
+        }
+        else{
+            break;
+        }
+    }
+}
+
+void move_down(Heap *H, int index){
+    if(index < 1){
+        log_message("Index error at move_down");
+        return;
+    }
+
+    while(index * 2 <= H->size){
+        int smaller_child = index * 2;
+
+        if(H->size >= index * 2 + 1){
+            if(H->data[index * 2]->cost > H->data[index * 2 + 1]->cost){
+                smaller_child = index * 2 + 1;
+            }
+        }
+        
+        if(H->data[smaller_child]->cost < H->data[index]->cost){
+            swap(H, smaller_child, index);
+            index = smaller_child;
+        }
+        else{
+            break;
+        }
+    }
+}
+
+void push_heap(Heap *H, Hnode *node){
+    if(H->size >= MAZE_SIZE * MAZE_SIZE){
+        log_message("DATA FULL at push_heap");
+        return;
+    }
+    H->size++;
+    H->data[H->size] = node;
+
+    move_up(H, H->size);
+}
+
+Hnode *Pop_heap(Heap *H){
+    if(Heap_empty(H)){
+        log_message("Empty Heap at Pop_heap");
+        return NULL;
+    }
+
+    Hnode *result = H->data[1];
+    H->data[1] = H->data[H->size];
+
+    H->size--;
+    move_down(H, 1);
+
+    return result;
+} 
+
+Hnode *create_Hnode(int x, int y, int cost, int dir, int speed){
+    Hnode *Hn = malloc(sizeof(Hnode));
+    Hn->x = x;
+    Hn->y = y;
+    Hn->cost = cost;
+    Hn->dir = dir;
+    Hn->speed = speed;
+    return Hn;
+}
+
+
+int DirToInt(char *dir){
+    if(dir == "n") return 0;
+    if(dir == "e") return 1;
+    if(dir == "s") return 2;
+    if(dir == "w") return 3;
+}
+
+char *IntToDir(int dir){
+    switch(dir){
+        case 0:
+            return "n";
+        case 1:
+            return "e";
+        case 2:
+            return "s";
+        case 3:
+            return "w";
+    }
 }
 
 //modified left and right so they update dir
@@ -128,24 +262,22 @@ int turnRight(coor *C){
 
 //updates coordinates
 void update_coor(coor *C){
-    if(C->dir <0){
+    if(C->dir < 0){
         C->dir = ((abs(C->dir)/4) + 1) * 4 + C->dir;
     }
     C->dir = C->dir % 4;
     
-    switch(C->dir) {
-        case 0:
-            C->y += 1;
-            break;
-        case 1:
-            C->x += 1;
-            break;
-        case 2:
-            C->y -= 1;
-            break;
-        case 3:
-            C->x -= 1;
-            break;
+    if(C->dir == DirToInt("n")){
+        C->y += 1;
+    }
+    else if(C->dir == DirToInt("e")){
+        C->x += 1;
+    }
+    else if(C->dir == DirToInt("s")){
+        C->y -= 1;
+    }
+    else if(C->dir == DirToInt("w")){
+        C->x -= 1;
     }
 }
 
@@ -211,14 +343,70 @@ void update_walltext(walls *maze[MAZE_SIZE][MAZE_SIZE]){
 }
 
 //Updates text, value, and adds to queue
-void wavefront_helper(walls *maze[MAZE_SIZE][MAZE_SIZE], int x, int y, int value, Queue* Q){
+bool wavefront_helper(walls *maze[MAZE_SIZE][MAZE_SIZE], Hnode *first, Hnode *second, double acc[5], bool front){
+
+    //If second one is lower or equal value to first stop
+    if(front){
+        if(maze[first->x][first->y]->value >= maze[second->x][second->y]->value && 
+            maze[second->x][second->y]->value != -1){
+            return false;
+        }
+    }
+    else{
+        if(maze[first->x][first->y]->value_back >= maze[second->x][second->y]->value_back &&
+            maze[second->x][second->y]->value_back != -1){
+            return false;
+        }
+    }
+
+    int value;
+    //Differentiaes between forward and backward
+    if(front){
+        value = maze[first->x][first->y] -> value;
+    }
+    else{
+        value = maze[first->x][first->y] -> value_back;
+    }
+
+    //checks if going in same direction, if so increases speed
+    if(first->dir == second->dir){
+        second->speed = first->speed + 1;
+    }
+    else { //different direction, add time for turn
+        second->speed = 0;
+        value += acc[4];
+    }
+
+    if(second->speed >= 3){ //reached max acceleration
+        value += acc[3];
+    }
+    else value += acc[second->speed];
+
+    second->cost = value;
+
+    if(front){
+        if(maze[second->x][second->y]->value == -1 ||
+            maze[second->x][second->y]->value > value){
+            
+            maze[second->x][second->y]->value = value;
+        }
+        else return false;
+    }
+    else{
+        if(maze[second->x][second->y]->value_back == -1 ||
+            maze[second->x][second->y]->value_back > value){
+            
+            maze[second->x][second->y]->value_back = value;
+        }
+        else return false;
+    }
+
+    
     char str[5];
 
     snprintf(str, sizeof(str), "%d", value);
-    API_setText(x, y, str);
-    maze[x][y]->value = value;
-
-    enqueue(Q, x, y);
+    API_setText(second->x, second->y, str);
+    return true;
 }
 
 void wavefront_helper_back(walls *maze[MAZE_SIZE][MAZE_SIZE], int x, int y, int value, Queue* Q){
@@ -232,53 +420,72 @@ void wavefront_helper_back(walls *maze[MAZE_SIZE][MAZE_SIZE], int x, int y, int 
 }
 
 //Just runs the wavefront every time
-void update_wavefront(walls *maze[MAZE_SIZE][MAZE_SIZE]){
+//IN PROGRESS UPDATING
+//WORKING ON MAKING IT MORE GENERIC, ENTER INITAL ONES INTO HEAP BEFORE USING 
 
-    Queue* Q = createQueue();
+//MAKE ALL THE VALUES -1 BESDIES GOAL BEFORE COMING IN
+void update_wavefront(walls *maze[MAZE_SIZE][MAZE_SIZE], Heap *H, double acc[5], bool front){
 
-    for(int i = 0; i< MAZE_SIZE; i++){
-        for(int j = 0; j < MAZE_SIZE; j++){
-            maze[i][j]->value = -1;
-        }
-    }
+    while(!Heap_empty(H)){
+        Hnode *Hn = Pop_heap(H);
+        int x = Hn->x;
+        int y = Hn->y;
 
-    wavefront_helper(maze, 7,7,0, Q);
-    wavefront_helper(maze, 8,7,0, Q);
-    wavefront_helper(maze, 7,8,0, Q);
-    wavefront_helper(maze, 8,8,0, Q);
-
-    while(!queue_empty(Q)){
-        Qnode* n = dequeue(Q);
         //check all four directions for no wall
-        walls* w = maze[n->x][n->y];
-        if(!w->north && n->y < 15){
-            walls* w1 = maze[n->x][n->y+1];
-            if(w1->value == -1){
-                wavefront_helper(maze, n->x, n->y+1, w->value+1, Q);
+        walls* w = maze[x][y];
+        if(!w->north && y < 15){
+            Hnode *Hn_north = malloc(sizeof(Hnode));
+            Hn_north -> x = x;
+            Hn_north -> y = y + 1;
+            Hn_north ->dir = DirToInt("n");
+            bool add = wavefront_helper(maze, Hn, Hn_north, acc, front);
+
+            if(!add){
+                free(Hn_north);
             }
+            else push_heap(H, Hn_north);
         }
-        if(!w->east && n->x < 15){
-            walls* w1 = maze[n->x+1][n->y];
-            if(w1->value == -1){
-                wavefront_helper(maze, n->x+1, n->y, w->value+1, Q);
+
+        if(!w->east && x < 15){
+            Hnode *Hn_east = malloc(sizeof(Hnode));
+            Hn_east ->x = x + 1;
+            Hn_east ->y = y;
+            Hn_east -> dir = DirToInt("e");
+            bool add = wavefront_helper(maze, Hn, Hn_east, acc, front);
+            
+            if(!add){
+                free(Hn_east);
             }
+            else push_heap(H, Hn_east);
         }
-        if(!w->south && n->y > 0){
-            walls* w1 = maze[n->x][n->y-1];
-            if(w1->value == -1){
-                wavefront_helper(maze, n->x, n->y-1, w->value+1, Q);
+        if(!w->south && y > 0){
+            Hnode *Hn_south = malloc(sizeof(Hnode));
+            Hn_south ->x = x;
+            Hn_south -> y = y-1;
+            Hn_south -> dir = DirToInt("s");
+            bool add = wavefront_helper(maze, Hn, Hn_south, acc, front);
+            
+            if(!add){
+                free(Hn_south);
             }
+            else push_heap(H, Hn_south);
         }
-        if(!w->west && n->x > 0){
-            walls* w1 = maze[n->x-1][n->y];
-            if(w1->value == -1){
-                wavefront_helper(maze, n->x-1, n->y, w->value+1, Q);
+        if(!w->west && x > 0){
+            Hnode *Hn_west = malloc(sizeof(Hnode));
+            Hn_west -> x = x - 1;
+            Hn_west -> y = y;
+            Hn_west ->dir = DirToInt("w");
+            bool add = wavefront_helper(maze, Hn, Hn_west, acc, front);
+            
+            if(!add){
+                free(Hn_west);
             }
+            else push_heap(H, Hn_west);
         }
-        free(n);
+        free(Hn);
     }
 
-    free(Q);
+    free(H);
     //log_message("Finished wavefront");
 }
 
@@ -341,71 +548,123 @@ Queue* find_path(coor *C, walls *maze[MAZE_SIZE][MAZE_SIZE], bool forward){
         bool east = false;
         bool south = false;
         bool west = false;
+        int value = INT_MAX;
         
         if(forward){
             if(!w->north && y < 15 && maze[x][y+1]->value < w->value){
-            north = true;
-            //log_message("north is true");
-            //y = y+1;
+                //log_message("north is true");
+                //y = y+1;
+                if(maze[x][y+1]->value < value){
+                    north = true;
+                    value = maze[x][y+1]->value;
+                }
             }
             if(!w->east && x < 15 && maze[x+1][y]->value < w->value){
-                east = true;
                 //log_message("east is true");
                 //x = x+1;
+                if(maze[x+1][y]->value < value){
+                    east = true;
+                    value = maze[x+1][y]->value;
+                    north = false;
+                }
+                else{
+                    east = true;
+                }
             }
             if(!w->south && y > 0 && maze[x][y-1]->value < w->value){
-                south = true;
                 //log_message("south is true");
                 //y = y-1;
+                if(maze[x][y+1]->value < value){
+                    south = true;
+                    value = maze[x][y+1]->value;
+                    north = false;
+                    east = false;
+                }
+                else{
+                    south = true;
+                }
             }
             if(!w->west && x > 0 && maze[x-1][y]->value < w->value){
-                west = true;
-                //log_message("west is true");
-                //x = x-1;
+                if(maze[x-1][y]->value < value){
+                    west = true;
+                    value = maze[x-1][y]->value;
+                    north = false;
+                    east = false;
+                    south = false;
+                }
+                else{
+                    west = true;
+                }
             }
         }
         else{
+            value = INT_MAX;
             if(!w->north && y < 15 && maze[x][y+1]->value_back < w->value_back){
-            north = true;
-            //log_message("north is true");
-            //y = y+1;
+                //log_message("north is true");
+                //y = y+1;
+                if(maze[x][y+1]->value_back < value){
+                    north = true;
+                    value = maze[x][y+1]->value_back;
+                }
             }
             if(!w->east && x < 15 && maze[x+1][y]->value_back < w->value_back){
-                east = true;
                 //log_message("east is true");
                 //x = x+1;
+                if(maze[x+1][y]->value_back < value){
+                    east = true;
+                    value = maze[x+1][y]->value_back;
+                    north = false;
+                }
+                else{
+                    east = true;
+                }
             }
             if(!w->south && y > 0 && maze[x][y-1]->value_back < w->value_back){
-                south = true;
                 //log_message("south is true");
                 //y = y-1;
+                if(maze[x][y+1]->value_back < value){
+                    south = true;
+                    value = maze[x][y+1]->value_back;
+                    north = false;
+                    east = false;
+                }
+                else{
+                    south = true;
+                }
             }
             if(!w->west && x > 0 && maze[x-1][y]->value_back < w->value_back){
-                west = true;
-                //log_message("west is true");
-                //x = x-1;
+                if(maze[x-1][y]->value_back < value){
+                    west = true;
+                    value = maze[x-1][y]->value_back;
+                    north = false;
+                    east = false;
+                    south = false;
+                }
+                else{
+                    west = true;
+                }
             }
         }
 
-        if(C->dir == 0){
+        if(C->dir == DirToInt("n")){
             if(north) y++;
             else if (east) x++;
             else if(west) x--;
             else y--;
         }
-        else if(C->dir == 1){
+        else if(C->dir == DirToInt("e")){
             if(east) x++;
             else if(north) y++;
             else if(south) y--;
             else x--;
         }
-        else if(C->dir == 2){
+        else if(C->dir == DirToInt("s")){
             if(south) y--;
             else if(east) x++;
             else if(west) x--;
             else y++;
         }
-        else{
+        else{ 
             if(west) x--;
             else if(south) y--;
             else if(north) y++;
@@ -429,16 +688,16 @@ Queue* find_path(coor *C, walls *maze[MAZE_SIZE][MAZE_SIZE], bool forward){
 void moveTo(coor *C, Qnode *next){
     int direction;
     if(C->y < next->y){ //needs to go north
-        direction = 0;
+        direction = DirToInt("n");
     }
     else if(C->x < next->x){ //needs to go east
-        direction = 1;
+        direction = DirToInt("e");
     }
     else if(C->y > next->y){ //needs to go south
-        direction = 2;
+        direction = DirToInt("s");
     }
     else{ //needs to go west
-        direction = 3;
+        direction = DirToInt("w");
     }
 
     direction = (direction - C->dir + 4) % 4; //how many times to turn right
@@ -511,10 +770,45 @@ int main(int argc, char* argv[]) {
         snprintf(log_temp, sizeof(log_temp), "New action, current coords are x: %d y: %d", c->x, c->y);
         //log_message(log_temp);
         set_wall(c, maze);
-        update_wavefront(maze);
-        Queue* path = find_path(c, maze, true);
         
+
+        //SETS The inital value of the maze
+        for(int i = 0; i< MAZE_SIZE; i++){
+            for(int j = 0; j < MAZE_SIZE; j++){
+                maze[i][j]->value = -1;
+            }
+        }
+
+        //Sets the inital value of the goal
+        //change if you want to change goal
+        maze[7][7]->value = 0;
+        maze[8][7]->value = 0;
+        maze[7][8]->value = 0;
+        maze[8][8]->value = 0;
+
+        //Creates the heap that the wavefront works off of
+        //Change inputs based on differing goals
+        Heap *H = CreateHeap();
+        //-1 for direction means that its the goal and can start in any direction
+        Hnode *Hn1 = create_Hnode(7, 7, 0, -1, 1);
+        Hnode *Hn2 = create_Hnode(7, 8, 0, -1, 1);
+        Hnode *Hn3 = create_Hnode(8, 7, 0, -1, 1);
+        Hnode *Hn4 = create_Hnode(8, 8, 0, -1, 1);
+        push_heap(H, Hn1);
+        push_heap(H, Hn2);
+        push_heap(H, Hn3);
+        push_heap(H, Hn4);
+
+        //Last one in acc is for turn cost
+        double acceleration[5] = {2, 1.5, 1, 0.5, 0.5};
+        update_wavefront(maze, H, acceleration, true);
+
+        
+        Queue* path = find_path(c, maze, true);
         Qnode* next = dequeue(path);
+
+        //CONTINUE HERE
+        //HAVEN"T WORKED ON THIS AT ALL
         moveTo(c, next);
         update_coor(c);
         //set_wall(c, maze);
@@ -524,6 +818,8 @@ int main(int argc, char* argv[]) {
         clear_color();
     }
 
+    /*
+    
     
     while(maze[c->x][c->y]->value_back != 0){
         set_wall(c, maze);
@@ -541,10 +837,10 @@ int main(int argc, char* argv[]) {
 
     Queue* path = find_path(c, maze, true);
     free(path);
+
+    */
 }
 
-//NOTES
-/*Make it so that once it finishes it takes what it thinks is the fastest way 
-back
-Use the code I wrote just in reverse
+//NOTE
+/* JUST FINISHED UPDATE_WAVEFRONT SHOULD BE USED FOR FRONT AND BACK
 */
