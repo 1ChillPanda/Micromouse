@@ -232,19 +232,23 @@ int DirToInt(char dir){
     if(dir == 'e') return 1;
     if(dir == 's') return 2;
     if(dir == 'w') return 3;
+    else{
+        return -1;
+    }
 }
 
-char *IntToDir(int dir){
+char IntToDir(int dir){
     switch(dir){
         case 0:
-            return "n";
+            return 'n';
         case 1:
-            return "e";
+            return 'e';
         case 2:
-            return "s";
+            return 's';
         case 3:
-            return "w";
+            return 'w';
     }
+    return 'z'; //just to return something
 }
 
 //modified left and right so they update dir
@@ -372,6 +376,9 @@ bool wavefront_helper(walls *maze[MAZE_SIZE][MAZE_SIZE], Hnode *first, Hnode *se
     //checks if going in same direction, if so increases speed
     if(first->dir == second->dir){
         second->speed = first->speed + 1;
+    }
+    else if(first->dir == -1){ //inital point makes second node second tier acc
+        second->speed = 1;
     }
     else { //different direction, add time for turn
         second->speed = 0;
@@ -601,7 +608,7 @@ Queue* find_path(coor *C, walls *maze[MAZE_SIZE][MAZE_SIZE], bool forward){
             }
         }
         else{
-            value = INT_MAX;
+            value = DBL_MAX;
             if(!w->north && y < 15 && maze[x][y+1]->value_back < w->value_back){
                 //log_message("north is true");
                 //y = y+1;
@@ -675,6 +682,7 @@ Queue* find_path(coor *C, walls *maze[MAZE_SIZE][MAZE_SIZE], bool forward){
         }
         else if(!east && !north && !west && !south){
             log_message("no possible direction found");
+            break;
         }
 
         /*
@@ -890,17 +898,17 @@ int main(int argc, char* argv[]) {
     }
 
 
+    //WORK ON DEBUG THIS ERROR
+    //update_walltext(maze);
+    Queue* path = find_path(c, maze, true);
+    free(path);
+
+    
     for(int i = 0; i<MAZE_SIZE; i++){
         for(int j= 0; j<MAZE_SIZE; j++){
             free(maze[i][j]);
         }
     }
-
-
-    //WORK ON DEBUG THIS ERROR
-    //update_walltext(maze);
-    Queue* path = find_path(c, maze, true);
-    free(path);
 }
 
 //NOTE
