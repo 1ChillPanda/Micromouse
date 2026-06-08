@@ -680,7 +680,8 @@ Queue* find_path(coor *C, walls *maze[MAZE_SIZE][MAZE_SIZE], bool forward){
             else if(north) y++;
             else if (east)x++;
         }
-        else if(!east && !north && !west && !south){
+        
+        if(!east && !north && !west && !south){
             log_message("no possible direction found");
             break;
         }
@@ -901,7 +902,7 @@ int main(int argc, char* argv[]) {
     //WORK ON DEBUG THIS ERROR
     //update_walltext(maze);
     Queue* path = find_path(c, maze, true);
-    free(path);
+    clear_path(path);
 
     
     for(int i = 0; i<MAZE_SIZE; i++){
