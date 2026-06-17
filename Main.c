@@ -14,7 +14,7 @@ struct xy_coordinates {
     int x;
     int y;
     int dir;
-    char dir_values[4];
+    char dir_values[NUM_DIRECTIONS];
 };
 
 typedef struct where_walls walls;
@@ -268,9 +268,9 @@ int turnRight(coor *C){
 //updates coordinates
 void update_coor(coor *C){
     if(C->dir < 0){
-        C->dir = ((abs(C->dir)/4) + 1) * 4 + C->dir;
+        C->dir = ((abs(C->dir)/NUM_DIRECTIONS) + 1) * NUM_DIRECTIONS + C->dir;
     }
-    C->dir = C->dir % 4;
+    C->dir = C->dir % NUM_DIRECTIONS;
     
     if(C->dir == DirToInt('n')){
         C->y += 1;
@@ -313,13 +313,13 @@ void custom_setWall(int x, int y, char dir, walls *maze[MAZE_SIZE][MAZE_SIZE]){
 //when see wall add wall;
 void set_wall(coor *C, walls *maze[MAZE_SIZE][MAZE_SIZE]){
     if(API_wallLeft()){
-        custom_setWall(C->x, C->y, C->dir_values[(C->dir + 3) % 4], maze);
+        custom_setWall(C->x, C->y, C->dir_values[(C->dir + 3) % NUM_DIRECTIONS], maze);
     }
     if(API_wallFront()){
         custom_setWall(C->x, C->y, C->dir_values[C->dir], maze);
     }
     if(API_wallRight()){
-        custom_setWall(C->x, C->y, C->dir_values[(C->dir + 1) % 4], maze);
+        custom_setWall(C->x, C->y, C->dir_values[(C->dir + 1) % NUM_DIRECTIONS], maze);
     }
 }
 
@@ -722,7 +722,7 @@ void moveTo(coor *C, Qnode *next){
         direction = DirToInt('w');
     }
 
-    direction = (direction - C->dir + 4) % 4; //how many times to turn right
+    direction = (direction - C->dir + NUM_DIRECTIONS) % NUM_DIRECTIONS; //how many times to turn right
     switch(direction){
         case 1:
             turnRight(C);
@@ -902,7 +902,11 @@ int main(int argc, char* argv[]) {
     //WORK ON DEBUG THIS ERROR
     //update_walltext(maze);
     Queue* path = find_path(c, maze, true);
-    clear_path(path);
+    while(!queue_empty(path)){
+        Qnode* n = dequeue(path);
+        free(n);
+    }
+    free(path);
 
     
     for(int i = 0; i<MAZE_SIZE; i++){
