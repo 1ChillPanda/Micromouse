@@ -17,15 +17,48 @@ struct xy_coordinates {
     char dir_values[NUM_DIRECTIONS];
 };
 
+typedef enum direction direction;
+enum direction {
+    NORTH = 0,
+    NORTHEAST = 4,
+    EAST = 1,
+    SOUTHEAST = 5,
+    SOUTH = 2,
+    SOUTHWEST = 6,
+    WEST = 3,
+    NORTHWEST = 7,
+    ANY = -1
+};
+
+char DirToChar(direction dir){
+    switch(dir){
+        case NORTH:
+            return 'n';
+        case SOUTH:
+            return 's';
+        case EAST:
+            return 'e';
+        case WEST:
+            return 'w';
+        default:
+            return 'z';
+    }
+}
+
+
 typedef struct where_walls walls;
 struct where_walls {
     bool north;
+    bool northeast;
     bool east; 
+    bool southeast;
     bool south;
+    bool southwest;
     bool west;
+    bool northwest;
     double value;
     double value_back;
-    int dir;
+    direction dir;
 };
 
 typedef struct queue_node Qnode;
@@ -122,13 +155,13 @@ struct Heap_Node{
     int x;
     int y;
     double cost;
-    int dir;
+    direction dir;
     int speed;
 };
 
 typedef struct Heap_system Heap;
 struct Heap_system{
-    Hnode *data[MAZE_SIZE * MAZE_SIZE + 1];
+    Hnode *data[MAZE_SIZE * MAZE_SIZE * 4];
     int size;
 };
 
@@ -191,7 +224,7 @@ void move_down(Heap *H, int index){
 }
 
 void push_heap(Heap *H, Hnode *node){
-    if(H->size >= MAZE_SIZE * MAZE_SIZE){
+    if(H->size >= MAZE_SIZE * MAZE_SIZE * 4){
         log_message("DATA FULL at push_heap");
         return;
     }
@@ -216,7 +249,7 @@ Hnode *Pop_heap(Heap *H){
     return result;
 } 
 
-Hnode *create_Hnode(int x, int y, double cost, int dir, int speed){
+Hnode *create_Hnode(int x, int y, double cost, direction dir, int speed){
     Hnode *Hn = malloc(sizeof(Hnode));
     Hn->x = x;
     Hn->y = y;
@@ -227,16 +260,12 @@ Hnode *create_Hnode(int x, int y, double cost, int dir, int speed){
 }
 
 
-int DirToInt(char dir){
-    if(dir == 'n') return 0;
-    if(dir == 'e') return 1;
-    if(dir == 's') return 2;
-    if(dir == 'w') return 3;
-    else{
-        return -1;
-    }
+int DirToInt(direction dir){
+    return dir;
 }
 
+
+//NOT UPDATED WITH ENUM I DON'T REALLY EVER NEED THIS
 char IntToDir(int dir){
     switch(dir){
         case 0:
@@ -257,12 +286,14 @@ char IntToDir(int dir){
 //pos before mod
 int turnLeft(coor *C){
     API_turnLeft();
-    return C->dir--;
+    C->dir = (C->dir + NUM_DIRECTIONS - 1) % NUM_DIRECTIONS;
+    return C->dir;
 }
 
 int turnRight(coor *C){
     API_turnRight();
-    return C->dir++;
+    C->dir = (C->dir + 1) % NUM_DIRECTIONS;
+    return C->dir;
 }
 
 //updates coordinates
@@ -272,38 +303,39 @@ void update_coor(coor *C){
     }
     C->dir = C->dir % NUM_DIRECTIONS;
     
-    if(C->dir == DirToInt('n')){
+    if(C->dir == NORTH){
         C->y += 1;
     }
-    else if(C->dir == DirToInt('e')){
+    else if(C->dir == EAST){
         C->x += 1;
     }
-    else if(C->dir == DirToInt('s')){
+    else if(C->dir == SOUTH){
         C->y -= 1;
     }
-    else if(C->dir == DirToInt('w')){
+    else if(C->dir == WEST){
         C->x -= 1;
     }
 }
 
 //modified set wall so that I can keep track of the walls
-void custom_setWall(int x, int y, char dir, walls *maze[MAZE_SIZE][MAZE_SIZE]){
-    API_setWall(x, y, dir);
+void custom_setWall(int x, int y, direction dir, walls *maze[MAZE_SIZE][MAZE_SIZE]){
+
+    API_setWall(x, y, DirToChar(dir));
     
     switch(dir){
-        case 'n':
+        case NORTH:
             maze[x][y]->north = true;
             if(y < 15) maze[x][y+1]->south = true;
             break;
-        case 'e':
+        case EAST:
             maze[x][y]->east = true;
             if(x < 15) maze[x+1][y]->west = true;
             break;
-        case 's':
+        case SOUTH:
             maze[x][y]->south = true;
             if(y > 0) maze[x][y-1]->north = true;
             break;
-        case 'w':
+        case WEST:
             maze[x][y]->west = true;
             if(x > 0) maze[x-1][y]->east = true;
             break;
@@ -313,13 +345,13 @@ void custom_setWall(int x, int y, char dir, walls *maze[MAZE_SIZE][MAZE_SIZE]){
 //when see wall add wall;
 void set_wall(coor *C, walls *maze[MAZE_SIZE][MAZE_SIZE]){
     if(API_wallLeft()){
-        custom_setWall(C->x, C->y, C->dir_values[(C->dir + 3) % NUM_DIRECTIONS], maze);
+        custom_setWall(C->x, C->y, (C->dir + 3) % NUM_DIRECTIONS, maze);
     }
     if(API_wallFront()){
-        custom_setWall(C->x, C->y, C->dir_values[C->dir], maze);
+        custom_setWall(C->x, C->y, C->dir, maze);
     }
     if(API_wallRight()){
-        custom_setWall(C->x, C->y, C->dir_values[(C->dir + 1) % NUM_DIRECTIONS], maze);
+        custom_setWall(C->x, C->y, (C->dir + 1) % NUM_DIRECTIONS, maze);
     }
 }
 
@@ -351,18 +383,6 @@ void update_walltext(walls *maze[MAZE_SIZE][MAZE_SIZE]){
 bool wavefront_helper(walls *maze[MAZE_SIZE][MAZE_SIZE], Hnode *first, Hnode *second, double acc[5], bool front){
 
     //If second one is lower or equal value to first stop
-    if(front){
-        if(maze[first->x][first->y]->value >= maze[second->x][second->y]->value && 
-            maze[second->x][second->y]->value != -1){
-            return false;
-        }
-    }
-    else{
-        if(maze[first->x][first->y]->value_back >= maze[second->x][second->y]->value_back &&
-            maze[second->x][second->y]->value_back != -1){
-            return false;
-        }
-    }
 
     double value;
     //Differentiaes between forward and backward
@@ -377,7 +397,7 @@ bool wavefront_helper(walls *maze[MAZE_SIZE][MAZE_SIZE], Hnode *first, Hnode *se
     if(first->dir == second->dir){
         second->speed = first->speed + 1;
     }
-    else if(first->dir == -1){ //inital point makes second node second tier acc
+    else if(first->dir == ANY){ //inital point makes second node second tier acc
         second->speed = 1;
     }
     else { //different direction, add time for turn
@@ -447,7 +467,7 @@ void update_wavefront(walls *maze[MAZE_SIZE][MAZE_SIZE], Heap *H, double acc[5],
             Hnode *Hn_north = malloc(sizeof(Hnode));
             Hn_north -> x = x;
             Hn_north -> y = y + 1;
-            Hn_north ->dir = DirToInt('n');
+            Hn_north ->dir = NORTH;
             bool add = wavefront_helper(maze, Hn, Hn_north, acc, front);
 
             if(!add){
@@ -460,7 +480,7 @@ void update_wavefront(walls *maze[MAZE_SIZE][MAZE_SIZE], Heap *H, double acc[5],
             Hnode *Hn_east = malloc(sizeof(Hnode));
             Hn_east ->x = x + 1;
             Hn_east ->y = y;
-            Hn_east -> dir = DirToInt('e');
+            Hn_east -> dir = EAST;
             bool add = wavefront_helper(maze, Hn, Hn_east, acc, front);
             
             if(!add){
@@ -472,7 +492,7 @@ void update_wavefront(walls *maze[MAZE_SIZE][MAZE_SIZE], Heap *H, double acc[5],
             Hnode *Hn_south = malloc(sizeof(Hnode));
             Hn_south ->x = x;
             Hn_south -> y = y-1;
-            Hn_south -> dir = DirToInt('s');
+            Hn_south -> dir = SOUTH;
             bool add = wavefront_helper(maze, Hn, Hn_south, acc, front);
             
             if(!add){
@@ -484,7 +504,7 @@ void update_wavefront(walls *maze[MAZE_SIZE][MAZE_SIZE], Heap *H, double acc[5],
             Hnode *Hn_west = malloc(sizeof(Hnode));
             Hn_west -> x = x - 1;
             Hn_west -> y = y;
-            Hn_west ->dir = DirToInt('w');
+            Hn_west ->dir = WEST;
             bool add = wavefront_helper(maze, Hn, Hn_west, acc, front);
             
             if(!add){
@@ -656,25 +676,25 @@ Queue* find_path(coor *C, walls *maze[MAZE_SIZE][MAZE_SIZE], bool forward){
             }
         }
 
-        if(C->dir == DirToInt('n')){
+        if(C->dir == NORTH){
             if(north) y++;
             else if (east) x++;
             else if(west) x--;
             else if(south) y--;
         }
-        else if(C->dir == DirToInt('e')){
+        else if(C->dir == EAST){
             if(east) x++;
             else if(north) y++;
             else if(south) y--;
             else if(west) x--;
         }
-        else if(C->dir == DirToInt('s')){
+        else if(C->dir == SOUTH){
             if(south) y--;
             else if(east) x++;
             else if(west) x--;
             else if (north) y++;
         }
-        else if(C->dir == DirToInt('w')){ 
+        else if(C->dir == WEST){ 
             if(west) x--;
             else if(south) y--;
             else if(north) y++;
@@ -710,20 +730,21 @@ Queue* find_path(coor *C, walls *maze[MAZE_SIZE][MAZE_SIZE], bool forward){
 void moveTo(coor *C, Qnode *next){
     int direction;
     if(C->y < next->y){ //needs to go north
-        direction = DirToInt('n');
+        direction = NORTH;
     }
     else if(C->x < next->x){ //needs to go east
-        direction = DirToInt('e');
+        direction = EAST;
     }
     else if(C->y > next->y){ //needs to go south
-        direction = DirToInt('s');
+        direction = SOUTH;
     }
     else{ //needs to go west
-        direction = DirToInt('w');
+        direction = WEST;
     }
 
-    direction = (direction - C->dir + NUM_DIRECTIONS) % NUM_DIRECTIONS; //how many times to turn right
-    switch(direction){
+    //how many times to turn right
+    int turns = (direction - C->dir + NUM_DIRECTIONS) % NUM_DIRECTIONS; 
+    switch(turns){
         case 1:
             turnRight(C);
             break;
@@ -786,10 +807,10 @@ int main(int argc, char* argv[]) {
 
     //set boundary walls
     for(int i = 0; i < MAZE_SIZE; i++){
-        custom_setWall(i, 0, 's', maze);
-        custom_setWall(i, 15, 'n', maze);
-        custom_setWall(0, i, 'w', maze);
-        custom_setWall(15, i, 'e', maze);
+        custom_setWall(i, 0, SOUTH, maze);
+        custom_setWall(i, 15, NORTH, maze);
+        custom_setWall(0, i, WEST, maze);
+        custom_setWall(15, i, EAST, maze);
     }
     //log_message("Boundary Walls set");
     set_wall(c, maze);
@@ -819,10 +840,10 @@ int main(int argc, char* argv[]) {
         //Change inputs based on differing goals
         Heap *H = CreateHeap();
         //-1 for direction means that its the goal and can start in any direction
-        Hnode *Hn1 = create_Hnode(7, 7, 0, -1, 1);
-        Hnode *Hn2 = create_Hnode(7, 8, 0, -1, 1);
-        Hnode *Hn3 = create_Hnode(8, 7, 0, -1, 1);
-        Hnode *Hn4 = create_Hnode(8, 8, 0, -1, 1);
+        Hnode *Hn1 = create_Hnode(7, 7, 0, ANY, 1);
+        Hnode *Hn2 = create_Hnode(7, 8, 0, ANY, 1);
+        Hnode *Hn3 = create_Hnode(8, 7, 0, ANY, 1);
+        Hnode *Hn4 = create_Hnode(8, 8, 0, ANY, 1);
         push_heap(H, Hn1);
         push_heap(H, Hn2);
         push_heap(H, Hn3);
@@ -866,10 +887,10 @@ int main(int argc, char* argv[]) {
 
         Heap *H = CreateHeap();
         //-1 for direction means that its the goal and can start in any direction
-        Hnode *Hn1 = create_Hnode(7, 7, 0, -1, 1);
-        Hnode *Hn2 = create_Hnode(7, 8, 0, -1, 1);
-        Hnode *Hn3 = create_Hnode(8, 7, 0, -1, 1);
-        Hnode *Hn4 = create_Hnode(8, 8, 0, -1, 1);
+        Hnode *Hn1 = create_Hnode(7, 7, 0, ANY, 1);
+        Hnode *Hn2 = create_Hnode(7, 8, 0, ANY, 1);
+        Hnode *Hn3 = create_Hnode(8, 7, 0, ANY, 1);
+        Hnode *Hn4 = create_Hnode(8, 8, 0, ANY, 1);
         push_heap(H, Hn1);
         push_heap(H, Hn2);
         push_heap(H, Hn3);
@@ -882,7 +903,7 @@ int main(int argc, char* argv[]) {
 
         Heap *H_back = CreateHeap();
         
-        Hnode *Hn1_back = create_Hnode(0, 0, 0, DirToInt('n'), 1);
+        Hnode *Hn1_back = create_Hnode(0, 0, 0, NORTH, 1);
         push_heap(H_back, Hn1_back);
 
         update_wavefront(maze, H_back, acceleration, false);
